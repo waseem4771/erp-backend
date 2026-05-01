@@ -1,0 +1,728 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model chart_of_accounts {
+  id                      Int                            @id @default(autoincrement())
+  sbu_id                  Int
+  account_code            String                         @db.VarChar(20)
+  account_name            String                         @db.VarChar(255)
+  account_type            chart_of_accounts_account_type
+  parent_id               Int?
+  sbus                    sbus                           @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "chart_of_accounts_ibfk_1")
+  chart_of_accounts       chart_of_accounts?             @relation("chart_of_accountsTochart_of_accounts", fields: [parent_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "chart_of_accounts_ibfk_2")
+  other_chart_of_accounts chart_of_accounts[]            @relation("chart_of_accountsTochart_of_accounts")
+  expenses                expenses[]
+  ledger_entries          ledger_entries[]
+
+  @@index([sbu_id], map: "idx_coa_sbu")
+  @@index([parent_id], map: "parent_id")
+}
+
+model currency_rates {
+  id            Int      @id @default(autoincrement())
+  from_currency String   @db.VarChar(10)
+  to_currency   String   @db.VarChar(10)
+  exchange_rate Decimal  @db.Decimal(15, 6)
+  last_updated  DateTime @default(now()) @db.Timestamp(0)
+}
+
+model fund_transfers {
+  id                Int                          @id @default(autoincrement())
+  mother_company_id Int
+  sbu_id            Int
+  amount            Decimal                      @db.Decimal(15, 2)
+  transfer_type     fund_transfers_transfer_type
+  description       String?                      @db.Text
+  transfer_date     DateTime                     @default(now()) @db.Timestamp(0)
+  mother_company    mother_company               @relation(fields: [mother_company_id], references: [id], onUpdate: Restrict, map: "fund_transfers_ibfk_1")
+  sbus              sbus                         @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "fund_transfers_ibfk_2")
+
+  @@index([mother_company_id], map: "mother_company_id")
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model journal_entries {
+  id               Int              @id @default(autoincrement())
+  sbu_id           Int
+  transaction_date DateTime         @db.Date
+  description      String?          @db.Text
+  reference_no     String?          @db.VarChar(100)
+  created_by       Int?
+  sbus             sbus             @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "journal_entries_ibfk_1")
+  users            users?           @relation(fields: [created_by], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "journal_entries_ibfk_2")
+  ledger_entries   ledger_entries[]
+
+  @@index([created_by], map: "created_by")
+  @@index([sbu_id], map: "idx_journal_sbu")
+}
+
+model ledger_entries {
+  id                Int               @id @default(autoincrement())
+  journal_id        Int
+  account_id        Int
+  debit             Decimal?          @default(0.00) @db.Decimal(15, 2)
+  credit            Decimal?          @default(0.00) @db.Decimal(15, 2)
+  currency_code     String?           @default("USD") @db.VarChar(10)
+  exchange_rate     Decimal?          @default(1.000000) @db.Decimal(15, 6)
+  is_reconciled     Boolean?          @default(false)
+  reconciled_at     DateTime?         @db.DateTime(0)
+  journal_entries   journal_entries   @relation(fields: [journal_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "ledger_entries_ibfk_1")
+  chart_of_accounts chart_of_accounts @relation(fields: [account_id], references: [id], onUpdate: Restrict, map: "ledger_entries_ibfk_2")
+
+  @@index([account_id], map: "idx_ledger_account")
+  @@index([journal_id], map: "journal_id")
+}
+
+model mother_company {
+  id             Int              @id @default(autoincrement())
+  company_name   String           @db.VarChar(255)
+  base_currency  String?          @default("USD") @db.VarChar(10)
+  created_at     DateTime         @default(now()) @db.Timestamp(0)
+  fund_transfers fund_transfers[]
+  sbus           sbus[]
+  users          users[]
+}
+
+model roles {
+  id          Int           @id @default(autoincrement())
+  role_name   String        @db.VarChar(50)
+  permissions permissions[]
+  users       users[]
+}
+
+model sbus {
+  id                      Int                   @id @default(autoincrement())
+  mother_company_id       Int?
+  sbu_name                String                @db.VarChar(255)
+  sbu_type                sbus_sbu_type
+  currency                String?               @default("USD") @db.VarChar(10)
+  location                String?               @db.Text
+  profit_share_percentage Decimal?              @default(0.00) @db.Decimal(5, 2)
+  api_keys                api_keys[]
+  attendance              attendance[]
+  chart_of_accounts       chart_of_accounts[]
+  coupons                 coupons[]
+  customers               customers[]
+  departments             departments[]
+  employees               employees[]
+  expenses                expenses[]
+  fixed_assets            fixed_assets[]
+  fund_transfers          fund_transfers[]
+  journal_entries         journal_entries[]
+  leads                   leads[]
+  leaves                  leaves[]
+  marketing_campaigns     marketing_campaigns[]
+  orders                  orders[]
+  price_books             price_books[]
+  products                products[]
+  purchase_orders         purchase_orders[]
+  quotes                  quotes[]
+  mother_company          mother_company?       @relation(fields: [mother_company_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "sbus_ibfk_1")
+  stock_adjustments       stock_adjustments[]
+  stock_transfers         stock_transfers[]
+  suppliers               suppliers[]
+  users                   users[]
+  warehouses              warehouses[]
+
+  @@index([mother_company_id], map: "mother_company_id")
+}
+
+model users {
+  id                                                 Int               @id @default(autoincrement())
+  mother_company_id                                  Int?
+  sbu_id                                             Int?
+  role_id                                            Int?
+  full_name                                          String            @db.VarChar(255)
+  email                                              String            @unique(map: "email") @db.VarChar(255)
+  password_hash                                      String            @db.VarChar(255)
+  status                                             users_status?     @default(Active)
+  audit_logs                                         audit_logs[]
+  journal_entries                                    journal_entries[]
+  purchase_orders_purchase_orders_created_byTousers  purchase_orders[] @relation("purchase_orders_created_byTousers")
+  purchase_orders_purchase_orders_approved_byTousers purchase_orders[] @relation("purchase_orders_approved_byTousers")
+  mother_company                                     mother_company?   @relation(fields: [mother_company_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_1")
+  sbus                                               sbus?             @relation(fields: [sbu_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_2")
+  roles                                              roles?            @relation(fields: [role_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
+
+  @@index([mother_company_id], map: "mother_company_id")
+  @@index([role_id], map: "role_id")
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model product_variants {
+  id                Int                 @id @default(autoincrement())
+  product_id        Int
+  sku               String              @unique(map: "sku") @db.VarChar(100)
+  variant_name      String?             @db.VarChar(100)
+  additional_price  Decimal?            @default(0.00) @db.Decimal(15, 2)
+  order_items       order_items[]
+  price_books       price_books[]
+  products          products            @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "product_variants_ibfk_1")
+  quote_items       quote_items[]
+  stock_adjustments stock_adjustments[]
+  stock_levels      stock_levels[]
+  stock_transfers   stock_transfers[]
+
+  @@index([product_id], map: "product_id")
+}
+
+model products {
+  id               Int                    @id @default(autoincrement())
+  sbu_id           Int
+  name             String                 @db.VarChar(255)
+  description      String?                @db.Text
+  category         String?                @db.VarChar(100)
+  product_type     products_product_type? @default(Physical)
+  base_price       Decimal                @db.Decimal(15, 2)
+  created_at       DateTime               @default(now()) @db.Timestamp(0)
+  deleted_at       DateTime?              @db.DateTime(0)
+  product_variants product_variants[]
+  sbus             sbus                   @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "products_ibfk_1")
+
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model purchase_orders {
+  id                                       Int                     @id @default(autoincrement())
+  sbu_id                                   Int
+  supplier_id                              Int
+  total_amount                             Decimal                 @db.Decimal(15, 2)
+  status                                   purchase_orders_status? @default(Pending)
+  created_by                               Int
+  approved_by                              Int?
+  order_date                               DateTime                @db.Date
+  deleted_at                               DateTime?               @db.DateTime(0)
+  sbus                                     sbus                    @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "purchase_orders_ibfk_1")
+  suppliers                                suppliers               @relation(fields: [supplier_id], references: [id], onUpdate: Restrict, map: "purchase_orders_ibfk_2")
+  users_purchase_orders_created_byTousers  users                   @relation("purchase_orders_created_byTousers", fields: [created_by], references: [id], onUpdate: Restrict, map: "purchase_orders_ibfk_3")
+  users_purchase_orders_approved_byTousers users?                  @relation("purchase_orders_approved_byTousers", fields: [approved_by], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "purchase_orders_ibfk_4")
+
+  @@index([approved_by], map: "approved_by")
+  @@index([created_by], map: "created_by")
+  @@index([sbu_id], map: "sbu_id")
+  @@index([supplier_id], map: "supplier_id")
+}
+
+model stock_levels {
+  id               Int              @id @default(autoincrement())
+  variant_id       Int
+  warehouse_id     Int
+  quantity         Int?             @default(0)
+  safety_stock     Int?             @default(10)
+  product_variants product_variants @relation(fields: [variant_id], references: [id], onUpdate: Restrict, map: "stock_levels_ibfk_1")
+  warehouses       warehouses       @relation(fields: [warehouse_id], references: [id], onUpdate: Restrict, map: "stock_levels_ibfk_2")
+
+  @@index([variant_id], map: "variant_id")
+  @@index([warehouse_id], map: "warehouse_id")
+}
+
+model stock_transfers {
+  id                                                       Int                     @id @default(autoincrement())
+  sbu_id                                                   Int
+  from_warehouse_id                                        Int
+  to_warehouse_id                                          Int
+  variant_id                                               Int
+  quantity                                                 Int
+  status                                                   stock_transfers_status? @default(Pending)
+  transfer_date                                            DateTime                @default(now()) @db.Timestamp(0)
+  sbus                                                     sbus                    @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "stock_transfers_ibfk_1")
+  warehouses_stock_transfers_from_warehouse_idTowarehouses warehouses              @relation("stock_transfers_from_warehouse_idTowarehouses", fields: [from_warehouse_id], references: [id], onUpdate: Restrict, map: "stock_transfers_ibfk_2")
+  warehouses_stock_transfers_to_warehouse_idTowarehouses   warehouses              @relation("stock_transfers_to_warehouse_idTowarehouses", fields: [to_warehouse_id], references: [id], onUpdate: Restrict, map: "stock_transfers_ibfk_3")
+  product_variants                                         product_variants        @relation(fields: [variant_id], references: [id], onUpdate: Restrict, map: "stock_transfers_ibfk_4")
+
+  @@index([from_warehouse_id], map: "from_warehouse_id")
+  @@index([sbu_id], map: "sbu_id")
+  @@index([to_warehouse_id], map: "to_warehouse_id")
+  @@index([variant_id], map: "variant_id")
+}
+
+model suppliers {
+  id              Int               @id @default(autoincrement())
+  sbu_id          Int
+  supplier_name   String            @db.VarChar(255)
+  contact_name    String?           @db.VarChar(100)
+  email           String?           @db.VarChar(255)
+  phone           String?           @db.VarChar(50)
+  address         String?           @db.Text
+  purchase_orders purchase_orders[]
+  sbus            sbus              @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "suppliers_ibfk_1")
+
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model warehouses {
+  id                                                            Int                 @id @default(autoincrement())
+  sbu_id                                                        Int
+  name                                                          String              @db.VarChar(255)
+  location                                                      String?             @db.Text
+  is_main                                                       Boolean?            @default(false)
+  stock_adjustments                                             stock_adjustments[]
+  stock_levels                                                  stock_levels[]
+  stock_transfers_stock_transfers_from_warehouse_idTowarehouses stock_transfers[]   @relation("stock_transfers_from_warehouse_idTowarehouses")
+  stock_transfers_stock_transfers_to_warehouse_idTowarehouses   stock_transfers[]   @relation("stock_transfers_to_warehouse_idTowarehouses")
+  sbus                                                          sbus                @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "warehouses_ibfk_1")
+
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model customers {
+  id            Int      @id @default(autoincrement())
+  sbu_id        Int
+  customer_name String   @db.VarChar(255)
+  email         String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(50)
+  address       String?  @db.Text
+  tier          String?  @default("Retail") @db.VarChar(20)
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  sbus          sbus     @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "customers_ibfk_1")
+  orders        orders[]
+  quotes        quotes[]
+
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model order_items {
+  id               Int              @id @default(autoincrement())
+  order_id         Int
+  variant_id       Int
+  quantity         Int
+  unit_price       Decimal          @db.Decimal(15, 2)
+  subtotal         Decimal          @db.Decimal(15, 2)
+  orders           orders           @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_ibfk_1")
+  product_variants product_variants @relation(fields: [variant_id], references: [id], onUpdate: Restrict, map: "order_items_ibfk_2")
+
+  @@index([order_id], map: "order_id")
+  @@index([variant_id], map: "variant_id")
+}
+
+model orders {
+  id           Int            @id @default(autoincrement())
+  sbu_id       Int
+  customer_id  Int
+  order_date   DateTime?      @default(now()) @db.DateTime(0)
+  total_amount Decimal        @db.Decimal(15, 2)
+  status       orders_status? @default(Pending)
+  created_at   DateTime       @default(now()) @db.Timestamp(0)
+  deleted_at   DateTime?      @db.DateTime(0)
+  order_items  order_items[]
+  sbus         sbus           @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "orders_ibfk_1")
+  customers    customers      @relation(fields: [customer_id], references: [id], onUpdate: Restrict, map: "orders_ibfk_2")
+
+  @@index([customer_id], map: "customer_id")
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model quote_items {
+  id               Int              @id @default(autoincrement())
+  quote_id         Int
+  variant_id       Int
+  quantity         Int
+  unit_price       Decimal          @db.Decimal(15, 2)
+  subtotal         Decimal          @db.Decimal(15, 2)
+  quotes           quotes           @relation(fields: [quote_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "quote_items_ibfk_1")
+  product_variants product_variants @relation(fields: [variant_id], references: [id], onUpdate: Restrict, map: "quote_items_ibfk_2")
+
+  @@index([quote_id], map: "quote_id")
+  @@index([variant_id], map: "variant_id")
+}
+
+model quotes {
+  id           Int            @id @default(autoincrement())
+  sbu_id       Int
+  customer_id  Int
+  total_amount Decimal        @db.Decimal(15, 2)
+  valid_until  DateTime?      @db.Date
+  status       quotes_status? @default(Draft)
+  created_at   DateTime       @default(now()) @db.Timestamp(0)
+  quote_items  quote_items[]
+  sbus         sbus           @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "quotes_ibfk_1")
+  customers    customers      @relation(fields: [customer_id], references: [id], onUpdate: Restrict, map: "quotes_ibfk_2")
+
+  @@index([customer_id], map: "customer_id")
+  @@index([sbu_id], map: "sbu_id")
+}
+
+model attendance {
+  id          Int                @id @default(autoincrement())
+  sbu_id      Int
+  employee_id Int
+  date        DateTime           @db.Date
+  status      attendance_status? @default(Present)
+  employees   employees          @relation(fields: [employee_id], references: [id], onUpdate: Restrict, map: "fk_att_emp")
+  sbus        sbus               @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_att_sbu")
+
+  @@index([employee_id], map: "fk_att_emp")
+  @@index([sbu_id], map: "fk_att_sbu")
+}
+
+model departments {
+  id        Int         @id @default(autoincrement())
+  sbu_id    Int
+  dept_name String      @db.VarChar(100)
+  sbus      sbus        @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "fk_dept_sbu")
+  employees employees[]
+
+  @@index([sbu_id], map: "fk_dept_sbu")
+}
+
+model employees {
+  id                Int                 @id @default(autoincrement())
+  sbu_id            Int
+  dept_id           Int
+  full_name         String              @db.VarChar(255)
+  designation       String              @db.VarChar(100)
+  joining_date      DateTime            @db.Date
+  base_salary       Decimal             @db.Decimal(15, 2)
+  status            employees_status?   @default(Active)
+  deleted_at        DateTime?           @db.DateTime(0)
+  attendance        attendance[]
+  departments       departments         @relation(fields: [dept_id], references: [id], onUpdate: Restrict, map: "fk_emp_dept")
+  sbus              sbus                @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "fk_emp_sbu")
+  leaves            leaves[]
+  payroll_registers payroll_registers[]
+
+  @@index([dept_id], map: "fk_emp_dept")
+  @@index([sbu_id], map: "fk_emp_sbu")
+}
+
+model payroll_registers {
+  id             Int       @id @default(autoincrement())
+  employee_id    Int
+  month          Int
+  year           Int
+  gross_salary   Decimal   @db.Decimal(15, 2)
+  deductions     Decimal?  @default(0.00) @db.Decimal(15, 2)
+  net_salary     Decimal   @db.Decimal(15, 2)
+  payment_status String?   @default("Pending") @db.VarChar(50)
+  paid_at        DateTime? @db.DateTime(0)
+  employees      employees @relation(fields: [employee_id], references: [id], onUpdate: Restrict, map: "fk_payroll_emp")
+
+  @@index([employee_id], map: "fk_payroll_emp")
+}
+
+model permissions {
+  id          Int      @id @default(autoincrement())
+  role_id     Int
+  module_name String   @db.VarChar(50)
+  can_view    Boolean? @default(false)
+  can_edit    Boolean? @default(false)
+  roles       roles    @relation(fields: [role_id], references: [id], onUpdate: Restrict, map: "fk_perm_role")
+
+  @@index([role_id], map: "fk_perm_role")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model api_keys {
+  id            Int              @id @default(autoincrement())
+  sbu_id        Int
+  client_id     String           @unique(map: "idx_client_id") @db.VarChar(100)
+  secret_key    String           @db.VarChar(255)
+  platform_name String?          @default("MERN") @db.VarChar(50)
+  webhook_url   String?          @db.VarChar(255)
+  status        api_keys_status? @default(Active)
+  created_at    DateTime         @default(now()) @db.Timestamp(0)
+  sbus          sbus             @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_api_keys_sbu")
+  api_logs      api_logs[]
+
+  @@index([sbu_id], map: "fk_api_keys_sbu")
+}
+
+model api_logs {
+  id               Int      @id @default(autoincrement())
+  api_key_id       Int
+  endpoint_hit     String   @db.VarChar(255)
+  request_method   String   @db.VarChar(10)
+  response_status  Int
+  payload_received String?  @db.Text
+  ip_address       String?  @db.VarChar(45)
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  api_keys         api_keys @relation(fields: [api_key_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_api_logs_key")
+
+  @@index([api_key_id], map: "fk_api_logs_key")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model fixed_assets {
+  id             Int                      @id @default(autoincrement())
+  sbu_id         Int
+  asset_name     String                   @db.VarChar(255)
+  asset_type     fixed_assets_asset_type? @default(Electronics)
+  purchase_date  DateTime                 @db.Date
+  purchase_price Decimal                  @db.Decimal(15, 2)
+  salvage_value  Decimal?                 @default(0.00) @db.Decimal(15, 2)
+  useful_life    Int
+  status         fixed_assets_status?     @default(Active)
+  created_at     DateTime                 @default(now()) @db.Timestamp(0)
+  deleted_at     DateTime?                @db.DateTime(0)
+  sbus           sbus                     @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_assets_sbu")
+
+  @@index([sbu_id], map: "fk_assets_sbu")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model audit_logs {
+  id         Int      @id @default(autoincrement())
+  user_id    Int?
+  sbu_id     Int?
+  action     String   @db.VarChar(100)
+  module     String   @db.VarChar(50)
+  details    String?  @db.Text
+  ip_address String?  @db.VarChar(45)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  users      users?   @relation(fields: [user_id], references: [id], onUpdate: Restrict, map: "fk_audit_user")
+
+  @@index([user_id], map: "fk_audit_user")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model stock_adjustments {
+  id               Int                               @id @default(autoincrement())
+  sbu_id           Int
+  variant_id       Int
+  warehouse_id     Int
+  quantity         Int
+  adjustment_type  stock_adjustments_adjustment_type
+  reason           String?                           @db.Text
+  created_at       DateTime                          @default(now()) @db.Timestamp(0)
+  sbus             sbus                              @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_adj_sbu")
+  product_variants product_variants                  @relation(fields: [variant_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_adj_variant")
+  warehouses       warehouses                        @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_adj_warehouse")
+
+  @@index([sbu_id], map: "fk_adj_sbu")
+  @@index([variant_id], map: "fk_adj_variant")
+  @@index([warehouse_id], map: "fk_adj_warehouse")
+}
+
+model leaves {
+  id          Int                @id @default(autoincrement())
+  employee_id Int
+  sbu_id      Int
+  leave_type  leaves_leave_type? @default(Casual)
+  start_date  DateTime           @db.Date
+  end_date    DateTime           @db.Date
+  reason      String?            @db.Text
+  status      leaves_status?     @default(Pending)
+  created_at  DateTime           @default(now()) @db.Timestamp(0)
+  employees   employees          @relation(fields: [employee_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_leave_emp")
+  sbus        sbus               @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_leave_sbu")
+
+  @@index([employee_id], map: "fk_leave_emp")
+  @@index([sbu_id], map: "fk_leave_sbu")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model leads {
+  id         Int           @id @default(autoincrement())
+  sbu_id     Int
+  first_name String        @db.VarChar(100)
+  last_name  String?       @db.VarChar(100)
+  email      String        @db.VarChar(255)
+  phone      String?       @db.VarChar(50)
+  source     String?       @db.VarChar(100)
+  status     leads_status? @default(New)
+  lead_score Int?          @default(0)
+  created_at DateTime      @default(now()) @db.Timestamp(0)
+  sbus       sbus          @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_leads_sbu")
+
+  @@index([sbu_id], map: "fk_leads_sbu")
+}
+
+model marketing_campaigns {
+  id            Int                                @id @default(autoincrement())
+  sbu_id        Int
+  campaign_name String                             @db.VarChar(255)
+  campaign_type marketing_campaigns_campaign_type? @default(Email)
+  status        marketing_campaigns_status?        @default(Draft)
+  budget        Decimal?                           @default(0.00) @db.Decimal(15, 2)
+  start_date    DateTime?                          @db.Date
+  end_date      DateTime?                          @db.Date
+  created_at    DateTime                           @default(now()) @db.Timestamp(0)
+  sbus          sbus                               @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_camp_sbu")
+
+  @@index([sbu_id], map: "fk_camp_sbu")
+}
+
+model coupons {
+  id             Int                    @id @default(autoincrement())
+  sbu_id         Int
+  code           String                 @db.VarChar(50)
+  discount_type  coupons_discount_type? @default(Percentage)
+  discount_value Decimal                @db.Decimal(15, 2)
+  expiry_date    DateTime?              @db.Date
+  is_active      Boolean?               @default(true)
+  created_at     DateTime               @default(now()) @db.Timestamp(0)
+  sbus           sbus                   @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_cp_sbu")
+
+  @@unique([sbu_id, code], map: "unique_sbu_coupon")
+}
+
+model price_books {
+  id               Int              @id @default(autoincrement())
+  sbu_id           Int
+  variant_id       Int
+  price            Decimal          @db.Decimal(15, 2)
+  tier             String?          @default("Retail") @db.VarChar(20)
+  created_at       DateTime         @default(now()) @db.Timestamp(0)
+  sbus             sbus             @relation(fields: [sbu_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_pb_sbu")
+  product_variants product_variants @relation(fields: [variant_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_pb_variant")
+
+  @@unique([sbu_id, variant_id, tier], map: "idx_sbu_variant_tier")
+  @@index([variant_id], map: "fk_pb_variant")
+}
+
+model expenses {
+  id                Int               @id @default(autoincrement())
+  sbu_id            Int
+  account_id        Int
+  amount            Decimal           @db.Decimal(15, 2)
+  description       String?           @db.Text
+  invoice_url       String?           @db.VarChar(255)
+  expense_date      DateTime          @db.Date
+  created_at        DateTime          @default(now()) @db.Timestamp(0)
+  chart_of_accounts chart_of_accounts @relation(fields: [account_id], references: [id], onUpdate: Restrict, map: "fk_expense_coa")
+  sbus              sbus              @relation(fields: [sbu_id], references: [id], onUpdate: Restrict, map: "fk_expense_sbu")
+
+  @@index([account_id], map: "idx_expense_account")
+  @@index([sbu_id], map: "idx_expense_sbu")
+}
+
+enum sbus_sbu_type {
+  Online_Store    @map("Online Store")
+  Physical_Branch @map("Physical Branch")
+  Service_Unit    @map("Service Unit")
+}
+
+enum chart_of_accounts_account_type {
+  Asset
+  Liability
+  Equity
+  Income
+  Expense
+}
+
+enum fund_transfers_transfer_type {
+  Allocation
+  Profit_Return
+}
+
+enum users_status {
+  Active
+  Inactive
+}
+
+enum purchase_orders_status {
+  Pending
+  Manager_Approved
+  Director_Approved
+  Received
+  Cancelled
+}
+
+enum products_product_type {
+  Physical
+  Digital
+}
+
+enum stock_transfers_status {
+  Pending
+  In_Transit
+  Completed
+}
+
+enum orders_status {
+  Pending
+  Invoiced
+  Paid
+  Cancelled
+}
+
+enum quotes_status {
+  Draft
+  Sent
+  Accepted
+  Expired
+  Converted
+}
+
+enum attendance_status {
+  Present
+  Absent
+  Leave
+}
+
+enum employees_status {
+  Active
+  Resigned
+  Terminated
+}
+
+enum api_keys_status {
+  Active
+  Inactive
+}
+
+enum fixed_assets_asset_type {
+  Machinery
+  Furniture
+  Electronics
+  Vehicles
+  Property
+}
+
+enum fixed_assets_status {
+  Active
+  Sold
+  Disposed
+}
+
+enum stock_adjustments_adjustment_type {
+  Damaged
+  Lost
+  Expired
+  Return_To_Supplier
+}
+
+enum leaves_leave_type {
+  Casual
+  Sick
+  Annual
+  Unpaid
+}
+
+enum leaves_status {
+  Pending
+  Approved
+  Rejected
+}
+
+enum marketing_campaigns_campaign_type {
+  Email
+  Social_Media @map("Social Media")
+  Cold_Call    @map("Cold Call")
+  Event
+}
+
+enum marketing_campaigns_status {
+  Draft
+  Active
+  Completed
+  Cancelled
+}
+
+enum leads_status {
+  New
+  Contacted
+  Qualified
+  Lost
+}
+
+enum coupons_discount_type {
+  Percentage
+  Fixed
+}
